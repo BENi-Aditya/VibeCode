@@ -24,7 +24,6 @@ interface Message {
   timestamp: Date;
 }
 
-
 interface ModelOption {
   id: string;
   name: string;
