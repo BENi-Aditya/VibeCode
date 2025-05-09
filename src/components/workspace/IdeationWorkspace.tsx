@@ -5,6 +5,8 @@ import { Card } from '@/components/ui/card';
 import { Mic, MicOff, X, Send, Loader, Info, ChevronDown, Trash2, Edit } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
+// Import custom instructions as raw text
+import customInstructions from '/Users/tripathd/Downloads/Manual Library/Projects/VibeCode/Custom_Prompts/Custom_instructions.txt?raw';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -292,6 +294,18 @@ export function IdeationWorkspace() {
         return;
       }
       
+      // Add basic rate limiting - prevent rapid successive calls
+      const lastCallTime = sessionStorage.getItem('lastApiCallTime');
+      const now = Date.now();
+      const minTimeBetweenCalls = 1000; // 1 second minimum between calls
+      
+      if (lastCallTime && now - parseInt(lastCallTime) < minTimeBetweenCalls) {
+        throw new Error('Please wait a moment before sending another message');
+      }
+      
+      // Update last call time
+      sessionStorage.setItem('lastApiCallTime', now.toString());
+      
       // Make the actual API call
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -302,7 +316,7 @@ export function IdeationWorkspace() {
         body: JSON.stringify({
           model: selectedModel.id,
           messages: [
-            { role: 'system', content: 'You are a helpful AI assistant for software development projects. Help the user plan and develop their project with specific, actionable advice.' },
+            { role: 'system', content: customInstructions },
             ...messages.map(msg => ({
               role: msg.sender === 'user' ? 'user' : 'assistant',
               content: msg.content
@@ -350,8 +364,30 @@ export function IdeationWorkspace() {
       }
     } catch (error) {
       console.error('Error sending message to API:', error);
-      // Fallback to simulation if API fails
-      simulateAiResponse(userMessage.content, isVoice);
+      
+      // Provide more specific error messages
+      let errorMessage = "Something went wrong. Please try again.";
+      
+      if (error instanceof Response && error.status === 429) {
+        errorMessage = "Rate limit exceeded. Please wait a moment before trying again.";
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
+      // Add a user-friendly error message
+      const errorResponse: Message = {
+        sender: 'ai',
+        content: `⚠️ ${errorMessage}`,
+        timestamp: new Date()
+      };
+      
+      setMessages(prev => [...prev, errorResponse]);
+      
+      // Don't fallback to simulation for rate limit errors
+      if (!(error instanceof Response && error.status === 429)) {
+        // Fallback to simulation if API fails for other reasons
+        simulateAiResponse(userMessage.content, isVoice);
+      }
     } finally {
       setIsAiThinking(false);
     }
